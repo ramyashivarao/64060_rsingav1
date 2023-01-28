@@ -1,0 +1,130 @@
+---
+title: "Assignment_1 - MIS-64060-001"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+## Step-1: Downloaded the 1000 fastest growing companies in Europe dataset from Kaggle
+
+Link: https://www.kaggle.com/datasets/nguyenthicamlai/top-1000-fastest-growing-companies-in-europe
+
+Also, made sure that this Data has both categorical variables(5 of them) and quantitative variables(7 of them)
+
+
+## Step-2: Imported the dataset(csv file) into R
+
+Also, shown are the top 5 rows of the data.
+
+```{r}
+companies <- read.csv('fastest_growing_companies.csv')
+head(companies,5)
+```
+
+
+## Step-3: Printing descriptive statistics of 2 categorical variables(Sector and Country) and 3 quantitative variables(Revenue2020, CAGR, Employees2020)
+
+**Sector: Field of operation of the company**
+
+```{r}
+sort(table(companies$Sector), decreasing = TRUE)
+
+```
+
+From the above analysis of Sector variable, it seems like the Technology sector has the most number of Fastest growing companies in Europe where as few sectors(Sales & Marketing, Batteries and Restaurants) have only one Fastest growing company each.
+
+
+**Country: Which country does the company belong to?**
+
+```{r}
+sort(table(companies$Country), decreasing = TRUE)
+
+```
+
+From the above analysis of Country variable, it seems like Italy has the most number of Fastest growing companies in Europe(235) where as Few countries(Luxembourg, Liechtenstein and Latvia) have only one Fastest growing company each.
+
+
+
+
+**Revenue2020: Revenue of the year 2020 in Euros**
+
+```{r}
+options(digits = 10, scientific = F)
+summary(companies$Revenue2020)
+
+```
+
+From the above analysis of Revenue2020 variable, Average Revenue in the year 2020 for the Fastest growing companies in Europe is around 20 Million Euros(20340091). Lowest revenue recorded for the given 1000 fastest growing companies is around 1.5 million Euros(1507867). Highest revenue recorded for the above companies is around 2 Billion Euros(2120071949)
+
+
+
+**Employees2020: Number of employees in 2020**
+
+```{r}
+summary(companies$Employees2020)
+
+```
+
+From the above analysis of Employees2020 variable, Average Number of employees in the year 2020 for the Fastest growing companies in Europe is 80(79.948). Lowest number of employees recorded for the given 1000 fastest growing companies is 1 Employee. Highest number of employees recorded for the above companies is around 1798 employees
+
+
+
+
+
+**CAGR: Compound growth rate from 2017 to 2020**
+
+```{r}
+summary(companies$CAGR)
+
+```
+
+From the above analysis of CAGR variable, Average Compound Annual Growth rate for the Fastest growing companies in Europe is 78.88%. Lowest CAGR recorded for the given 1000 fastest growing companies is 36.55%. Highest CAGR recorded for the above companies is around 477.43%
+
+
+
+
+## Step-4: I am applying logarithmic transformation to CAGR and Revenue2017 variables
+
+Adding new columns CAGR_transformed and Revenue2017_transformed to store the log transformed variables
+
+```{r}
+companies$CAGR_transformed = log(companies$CAGR)
+companies$Revenue2017_transformed = log(companies$Revenue2017)
+
+```
+
+
+
+## Step-5: Plotting quantitative variable(CAGR) and Building Scatter plots(Revenue2020 vs Employees2020, Revenue2017 vs Employees2017)
+
+**Plotting Histogram of CAGR:**
+
+```{r}
+hist(companies$CAGR,breaks="sturges",col='gray', xlab="CAGR of Companies", ylab="Frequency", main = "Histogram of CAGR")
+```
+
+From the histogram, you can infer that more than 400 companies have the CAGR between the 50% and 100%. Also there seems to be a outlier or two at end of the histogram with CAGR of just lower than 500%
+
+
+
+
+**Building a Scatter plot between Revenue2020 vs Employees2020**
+
+```{r}
+library(ggplot2)
+ggplot(companies, aes(x = Revenue2020, y = Employees2020)) + geom_point()
+```
+
+From the above scatter plot, it seems the relationship between Revenue and Employees in the year 2020 is not crisp and clear. 
+
+
+**Building a Scatter plot between Revenue2017 and Employees2017**
+
+```{r}
+ggplot(companies, aes(x = Revenue2017, y = Employees2017)) + geom_point()
+```
+
+From the above scatter plot, it seems the relationship between Revenue and Employees in the year 2017 is also not crisp and clear. 
+
