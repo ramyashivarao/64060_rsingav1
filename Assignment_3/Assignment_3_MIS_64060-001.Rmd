@@ -1,0 +1,247 @@
+---
+title: "Assignment_2_MIS_64060-001"
+output:
+  html_document:
+    df_print: paged
+date: "2023-03-03"
+---
+
+
+
+Load Libraries and Import Universal Bank data
+```{r}
+library(class)
+library(caret)
+library(readr)
+library(e1071)
+library(reshape)
+library(reshape2)
+library(dplyr)
+library(stats)
+library(ISLR)
+library(gmodels) 
+
+# load data
+universal_banking <- read.csv("UniversalBank.csv")
+
+```
+
+
+Only keeping Loan(10), Credit Card(14) and Online(13) Columns
+```{r}
+bank_data_final = universal_banking[, c(10,13,14)]
+```
+
+
+
+Convert all columns in bank_data_final into factors
+```{r}
+bank_data_final$Personal.Loan = as.factor(bank_data_final$Personal.Loan)
+bank_data_final$Online = as.factor(bank_data_final$Online)
+bank_data_final$CreditCard = as.factor(bank_data_final$CreditCard)
+sapply(bank_data_final,class) #check class types of the column variables
+```
+
+
+
+```{r}
+# Reorder the variables: Putting the response variable "Personal.Loan" last
+bank_data_final<-bank_data_final[,c(2,3,1)]
+t(t(names(bank_data_final))) 
+```
+
+Data Partitioning:
+
+Partitioning the data into training (60%) and validation (40%) sets (Stratified Sampling)
+
+```{r}
+set.seed(4546) #set the seed to make the partition reproducible
+train_partition <- createDataPartition(bank_data_final$Personal.Loan,p=0.6,list=FALSE)
+train_data <- bank_data_final[train_partition,]
+val_data <- bank_data_final[-train_partition,]
+```
+
+
+#### A. Create a pivot table for the training data with Online as a column variable, CC as a row variable, and Loan as a secondary row variable. The values inside the table should convey the count. In R use functions melt() and cast(), or function table(). In Python, use panda dataframe methods melt() and pivot(). 
+
+```{r}
+attach(train_data) # Attaching the dataset to use columns as-is
+ftable(CreditCard,Personal.Loan,Online)
+```
+
+
+#### B. Consider the task of classifying a customer who owns a bank credit card and is actively using online banking services. Looking at the pivot table, what is the probability that this customer will accept the loan offer? [This is the probability of loan acceptance (Loan = 1) conditional on having a bank credit card (CC = 1) and being an active user of online banking services (Online = 1)]. 
+
+```{r}
+
+#There are 487+58 = 545 records where Credit Card = 1 and Online = 1 and 58 of them
+# accept the loan offer, so the conditional probability is 58/(487+58) = 0.106422
+
+p0 = 58/(487+58)
+p0
+```
+
+
+
+#### C. Create two separate pivot tables for the training data 
+
+i. This pivot table will have Loan (rows) as a function of Online (columns) 
+```{r}
+addmargins(table(Personal.Loan, Online))
+```
+
+
+ii. This pivot table will have Loan (rows) as a function of CC. 
+```{r}
+addmargins(table(Personal.Loan, CreditCard))
+
+```
+
+
+#### D. Compute the following quantities [P(A | B) means “the probability of A given B”]:  
+
+We can use the pivot tables in (C) to calculate the following easily.
+
+i. P(CC = 1 | Loan = 1) (the proportion of credit card holders among the loan acceptors)
+```{r}
+# 288 of them have Loan =1, out of 288, 87 of them have credit card(CC=1)
+# So, P(CC = 1 | Loan = 1) would be 87/288 = 0.3020833
+
+p1 = 87/288
+p1
+
+```
+
+
+ii. P(Online = 1 | Loan = 1)  
+```{r}
+# 288 of them have Loan =1, out of 288, 184 of them have Online =1(have Online banking accounts)
+# So, P(Online = 1 | Loan = 1) would be 184/288 = 0.6388889
+
+p2 = 184/288
+p2
+```
+  
+    
+    
+iii. P(Loan = 1) (the proportion of loan acceptors)  
+```{r}
+# Total number of customers are 3000 in training data, out of which the ones who accept the offer are just 288.
+# So the probability(loan=1) would be 288/3000 = 0.096
+p3= 288/3000 
+p3
+
+```
+  
+    
+iv. P(CC = 1 | Loan = 0)  
+```{r}
+# 2712 of them do not accept the loan offer, out of which 792 of them have a credit card(CC=1)
+# So, P(CC = 1 | Loan = 0) = 792/2712 = 0.2920354
+
+p4= 792/2712
+p4
+
+```
+    
+    
+v. P(Online = 1 | Loan = 0) 
+```{r}
+
+# 2712 of them do not accept the loan offer(Loan=0), out of which 1599 of them have a Online banking account(Online=1)
+# So, P(Online = 1 | Loan = 0) = 1599/2712 = 0.5896018
+
+p5= 1599/2712
+p5
+
+
+```
+  
+        
+    
+    
+vi. P(Loan = 0) 
+```{r}
+# Total number of customers are 3000 in training data, out of which the ones who do not accept the offer are 2712
+# So the probability(loan=0) would be 2712/3000 = 0.904
+p6= 2712/3000 
+p6
+
+```
+  
+    
+
+#### E. Use the quantities computed above to compute the naive Bayes probability P(Loan = 1 | CC = 1, Online = 1)
+```{r}
+# P(Loan = 1 | CC = 1, Online = 1)  = (P(Loan = 1) * [P(CC = 1 / Loan = 1) * P(Online = 1 / Loan = 1)]) / 
+# (P(Loan = 1) * [P(CC = 1 / Loan = 1) * P(Online = 1 / Loan = 1)] + P(Loan = 0) *[P(CC = 1 / Loan = 0) * P(Online = 1 / Loan = 0)])
+
+# After substituting the values the answer is 0.1063698
+# = 0.096[(0.3020833)(0.6388889)] / {0.096[(0.3020833)(0.6388889)] + 0.904[(0.2920354)(0.5896018)]}
+# = 0.01852778 / ( 0.01852778 + 0.1556549)
+# = 0.1063698
+
+p7 <- (p3*(p1*p2)/((p3*(p1*p2))+(p6*(p4*p5))))
+p7
+
+
+```
+
+
+
+#### F. Compare this value with the one obtained from the pivot table in (B). Which is a more accurate estimate? 
+```{r}
+
+# The value in (B) is 0.106422 which is closer to the value in (E) i.e., 0.1063698
+
+# However, The value obtained from (B) (pivot table) is a more accurate estimate, because we do not need to make independent assumptions. The probability values obtained from naive Bayes formula(E) is not on the same scale as the exact values that we anticipate, but just a reasonably accurate rank ordering of propensities.
+
+```
+
+
+
+#### G. Which of the entries in this table are needed for computing P(Loan = 1 | CC = 1, Online = 1)? Run naive Bayes on the data. Examine the model output on training data, and find the entry that corresponds to P(Loan = 1 | CC = 1, Online = 1). Compare this to the number you obtained in (E). 
+
+```{r}
+# Two entries are needed for computing P(Loan = 1 | CC = 1, Online = 1):
+# 1) P(CC = 1, Online = 1 | Loan = 0)
+# 2) P(CC = 1, Online = 1 | Loan = 1)
+
+# Run Naive Bayes and Examining Naive Bayes output
+naive_bayes <- naiveBayes(Personal.Loan ~ CreditCard+Online, data = train_data)
+naive_bayes
+
+
+# Conditional Probabilities from the output are the same as the ones i calculated above in (D)
+# Also the A-Priori probabilities are the same as the ones in (D)
+```
+
+
+```{r}
+## Predict probabilities
+predictions <- predict(naive_bayes, newdata = train_data, type = "raw")
+predicted <- cbind(train_data, predictions)
+print(unique(predicted[predicted$CreditCard == 1 & predicted$Online == 1,]['1']))
+# The entry that corresponds to P(Loan = 1 ∣ CC = 1, Online = 1) is 0.1063698, which is the same as the answer we got from (E).
+
+```
+
+
+Detaching the train_data
+
+```{r}
+detach(train_data)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
