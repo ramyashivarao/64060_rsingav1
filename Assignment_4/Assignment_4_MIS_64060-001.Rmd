@@ -1,0 +1,221 @@
+---
+title: "Assignment_4_MIS_64060-001"
+output: html_document
+date: "2023-03-19"
+---
+
+
+Firstly, i am installing the required packages and loading them here
+Also, setting seed
+```{r}
+library(tidyverse) # group of packages to wrangle and visualize data
+library(cluster) # cluster analysis
+library(factoextra) # visualize clusters and principal components
+library(dendextend) # visualize dendrograms
+library(here) # create a file directory
+library(ggrepel) # repel overlapping text labels
+library(clustree) # visualize clusters
+library(FactoMineR) # explore multivariate data
+library(ggcorrplot) # visualize correlations
+library(clValid) # compute cluster metrics
+library(broom) # tidy algorithm outputs
+library(umap) # dimension reduction
+library(tidyquant) # in this case theme and color for clusters visualization
+set.seed(456)
+```
+
+
+Import Pharmaceuticals Dataset
+```{r}
+pharm_data = read.csv('Pharmaceuticals.csv')
+```
+
+Basic Exploration of the dataset
+```{r}
+str(pharm_data) # 21 observations and  14 variables:
+colMeans(is.na(pharm_data)) # No missing values in the dataset
+```
+
+
+Before exploring the data further, i am assigning row names to Name variable(denotes company name) as it will be easy to understand the clusters and would be easier to interpret the categorization of companies into these clusters
+
+```{r}
+# set row names to the company variable
+row.names(pharm_data) <- pharm_data[,2]
+
+# remove the company column from the data as it is an index now
+pharm_data <- pharm_data[,-2]
+```
+
+
+
+
+# a. Use only the numerical variables (1 to 9) to cluster the 21 firms. Justify the various choices made in conducting the cluster analysis, such as weights for different variables, the specific clustering algorithm(s) used, the number of clusters formed, and so on.
+
+```{r}
+# only subset the numerical variables(columns 2 until 10 are numeric)
+pharm_data_numeric = pharm_data[, c(2:10)] # Removing "Symbol", "Median_Recommendation", "Location", "Exchange" 
+summary(pharm_data_numeric)
+```
+
+
+From the below correlation matrix: We can identify strong positive correlations between ROA, ROE, Net_Profit_Margin and Market_Cap which might indicate that these 4 variables might play an important role in forming a cluster
+
+```{r}
+# create correlation matrix
+cor_pharm_data<- pharm_data_numeric %>% cor()
+
+# visualizing correlations
+ggcorrplot(cor_pharm_data, 
+           outline.color = "grey50", 
+           lab = TRUE,
+           hc.order = TRUE,
+           type = "full") 
+
+
+```
+
+
+As the euclidean distance is sensitive to scale, we normalize it
+
+```{r}
+# Scaling the data here
+pharm_data_numeric=scale(pharm_data_numeric)
+
+#Visual representation of normalized distance between the pharmaceuticals companies data(observations)
+distance = get_dist(pharm_data_numeric, method ="euclidean")
+fviz_dist(distance)
+# There seems to be a distinction among the rows as per the Heatmap below. This denotes the distance by color intensity.
+```
+
+
+K-Means Cluster Analysis
+Firstly, i am going to determine the optimal number of clusters, we will use two methods: "elbow" and "average silhouette"
+
+```{r}
+# Elbow method
+fviz_nbclust(pharm_data_numeric, FUNcluster = kmeans, method = "wss")
+```
+From the elbow method above, it is not very obvious which "k" to pick, as the Total within sum of squares(WSS) is decreasing from 4 to 6 almost at the same slow rate. 
+
+Running the silhouette method here to narrow down the number of clusters:
+
+```{r}
+# Average silhouette method
+fviz_nbclust(pharm_data_numeric, FUNcluster = kmeans, method = "silhouette")
+
+```
+
+
+The average silhouette method indicates that 5 clusters correspond to the optimal number. So, i am going ahead with k=5 with the equal weights on all the variables.
+
+Building K-means clustering with 5 Clusters
+```{r}
+set.seed(456)
+kmeans_clustering_w_5_clusters <- kmeans(pharm_data_numeric, centers = 5, nstart = 50,
+                    iter.max = 10)
+
+table(kmeans_clustering_w_5_clusters$cluster)
+# So, we have 8, 3, 2, 4, 4 observations(rows) in Clusters 1, 2, 3, 4, 5 respectively
+```
+
+
+Other metrics to measure compactness and Separation of k=5
+1) WSS(Total within sum of squares)
+2) BSS(Total between sum of squares)
+3) Dunn Index
+
+Calculating WSS and BSS for k=5:
+WSS = 62.35 and BSS = 117.6456
+
+```{r}
+# check total within and between sum of squares
+glance(kmeans_clustering_w_5_clusters)
+
+```
+Dunn index is 0.3741429 for k=5
+
+```{r}
+dunn_index_k_means_5 <- dunn(clusters = kmeans_clustering_w_5_clusters$cluster, Data =pharm_data_numeric)
+dunn_index_k_means_5
+```
+
+# b. Interpret the clusters with respect to the numerical variables used in forming the clusters.
+
+Finding out how the variables profile in each cluster by looking at the means of these numeric variables in 5 different clusters.
+
+```{r}
+kmeans_clustering_w_5_clusters %>%
+  augment(pharm_data_numeric) %>%
+  dplyr::select(-.rownames) %>%
+  group_by(.cluster) %>% 
+  summarise_all(mean)
+```
+
+Cluster 1 seems to represent companies with above-average returns on equity and assets, as well as above-average net profit margins. They have slightly above-average asset turnover, indicating they are utilizing their assets efficiently. They have below-average beta, PE ratio, and leverage, suggesting that they may be less risky and have lower debt levels compared to the overall population.
+
+Cluster 2 seems to represent companies with small market capitalizations and high levels of leverage, suggesting that they may be more risky and have higher debt levels compared to the overall population. They have below-average returns on equity and assets, as well as below-average net profit margins. Their beta is well above the overall mean, indicating they are highly correlated with the market.
+
+Cluster 3 seems to represent companies with high PE ratios, which may indicate that they are relatively expensive compared to the overall population. They have below-average returns on equity and assets, as well as below-average net profit margins. They have slightly above-average asset turnover and slightly below-average leverage, indicating they are utilizing their assets efficiently and have lower debt levels compared to the overall population.
+
+Cluster 4 seems to represent companies with high market capitalizations, above-average returns on equity and assets, as well as above-average net profit margins. They have well above-average asset turnover, indicating they are utilizing their assets efficiently. Their beta is slightly below the overall mean, suggesting they may be less volatile compared to the overall population.
+
+Cluster 5 seems to represent companies with slightly below-average market capitalization, below-average returns on equity and assets, as well as below-average net profit margins. They have well below-average asset turnover, indicating they are not utilizing their assets efficiently. Their beta is slightly above the overall mean, suggesting they may be slightly more volatile compared to the overall population. They have slightly above-average leverage, indicating they may have higher levels of debt compared to the overall population.
+
+# c. Is there a pattern in the clusters with respect to the numerical variables (10 to 12)? (those not used informing the clusters
+
+```{r}
+# There are 3 columns that are not informing the clusters: Stock Exchange, Location, and Median Recommendation. Adding clusters assignment to the data with these 3 columns
+add_clusters_to_pharm_data <-  pharm_data %>% select(c(11,12,13)) %>% mutate(Cluster = kmeans_clustering_w_5_clusters$cluster)
+print(add_clusters_to_pharm_data) 
+
+```
+
+
+```{r}
+# Utilizing bar charts
+bar_chart_median_recommendation = ggplot(add_clusters_to_pharm_data, mapping = aes(factor(Cluster), fill=Median_Recommendation)) +
+  geom_bar(position = 'dodge') + labs(x='Cluster Number', y='Frequency')
+bar_chart_median_recommendation
+```
+
+```{r}
+bar_chart_location = ggplot(add_clusters_to_pharm_data, mapping = aes(factor(Cluster), fill=Location)) + geom_bar(position = 'dodge') + labs(x='Cluster Number', y='Frequency')
+bar_chart_location
+```
+
+
+
+```{r}
+bar_chart_exchange <- ggplot(add_clusters_to_pharm_data, mapping = aes(factor(Cluster), fill=Exchange)) +
+geom_bar(position = 'dodge') + labs(x='Cluster Number', y='Frequency')
+bar_chart_exchange
+```
+
+#### Above clustering analysis suggests that all the companies in each cluster have almost similar characteristics in terms of these 3 columns: Median_Recommendation, Location, and Exchange. There is no clear distinction between them based on these columns. However there are few insights i was able to infer:
+
+#### Cluster - 1 is mostly comprised of American-put together organizations listed on NYSE, and the analysts recommendation is mostly to hold their stock, that explains they are steady and generally low-risk investments
+
+#### Companies from Germany and the United States that trade on stock exchanges other than the NYSE (AMEX and NASDAQ) receive a hold or moderate buy recommendation in Cluster 2
+
+#### Companies from US and Canada are included in Cluster -3, and they are listed on the NYSE and have a moderate buy or hold recommendation, indicating that they may have some growth potential.
+
+#### Companies from UK and the United States are included here and also received a hold or moderate buy recommendation in Cluster 4.
+
+#### Companies from the US, Ireland and France make up Cluster -5. Their stocks on the NYSE have a moderate buy or moderate sell recommendation, indicating that they may have some growth potential but also equivalent risk.
+
+
+# d. Provide an appropriate name for each cluster using any or all of the variables in the dataset.
+
+Based on the above clustering analysis and looking at the characterstics of the clusters, 21 pharmaceutical firms can be categorized into 5 different groups:
+
+Cluster 1: "Stable and Most Efficient Firms"
+
+Cluster 2: "Very Risky Firms with high debt" 
+
+Cluster 3: "Overpriced - Risky firms"
+
+Cluster 4: "Established and very profitable firms" 
+
+Cluster 5: "Growth oriented - Low risk firms"  
+
