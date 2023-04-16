@@ -1,0 +1,220 @@
+---
+title: "Assignment_5_MIS_64060-001"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Load all the required packages
+```{r}
+library(factoextra)
+library(Rfast)
+library(ISLR)
+library(cluster)
+library(Rfast)
+library(analogue)
+library(caret)
+library(purrr)
+```
+
+
+Import the cereals data
+```{r}
+cereals_data = read.csv('Cereals.csv')
+```
+
+
+Data Preprocessing. Remove all cereals with missing values
+
+```{r}
+# assigning rows to the cereal names
+rownames(cereals_data)=cereals_data$name
+
+# Remove the cereal name column
+cereals_data = cereals_data[,-1]
+
+# There are 3 categorical variables in the data(mfr, type and shelf). Removing them
+cereals_data = cereals_data[,c(-1,-2,-12)]
+# Normalization
+normalized_cereals_data=scale(cereals_data)
+ 
+# There are 4 missing values in the entire dataframe
+sum(is.na(normalized_cereals_data)) # 4
+
+# Remove all cereals with missing values
+normalized_cereals_data=as.data.frame(na.omit(normalized_cereals_data))
+
+```
+
+There are 74 rows and 12 columns after removing missing values and normalizing the columns(scaling)
+```{r}
+dim(normalized_cereals_data)
+```
+
+
+#### 1. Apply hierarchical clustering to the data using Euclidean distance to the normalized measurements. Use Agnes to compare the clustering from single linkage, complete linkage, average linkage, and Ward. Choose the best method.
+
+Solution:
+Ward Linkage seems to be the best linkage method because it has the highest agglomerative coefficient:0.9088247 compared to other linkages
+
+```{r}
+# Comparing the clustering from single linkage, complete, linkage, average linkage, and Ward methodologies using AGNES
+linkages =c("average", "single", "complete", "ward")
+names(linkages) <- c("average", "single", "complete", "ward")
+
+# function to compute agglomerative coefficient
+agglomerative_coef_calc <- function(linkage_method) {
+  agnes(normalized_cereals_data, method = linkage_method)$ac
+}
+
+# Calculating the agglomerative coefficients for all the linkage methods
+map_dbl(linkages, agglomerative_coef_calc)
+
+```
+
+Hierarchical Clustering using ward linkage and Euclidean Distance:
+```{r}
+# Dissimilarity matrix
+euclidean_distance=dist(normalized_cereals_data,method="euclidean")
+
+# Applying the Hierarchical clustering using Euclidean distance and ward linkage
+hierarchical_clustering_w_euclidean_ward=hclust(euclidean_distance,method="ward.D")
+
+#Visualizing the Dendrogram using Ward linkage methodology
+plot(hierarchical_clustering_w_euclidean_ward,cex=0.5,hang=0.1)
+```
+
+#### 2. How many clusters would you choose?
+
+Solution:
+Cutoff of 25 appears to provide the most distinct and meaningful separation between groups. When using a cutoff of 25, number of clusters is 4
+
+```{r}
+plot(hierarchical_clustering_w_euclidean_ward,cex=0.5,hang=0.1)
+rect.hclust(hierarchical_clustering_w_euclidean_ward,k=4,border=1:4)
+```
+
+Add the clusters assignment to the Cereals data
+```{r}
+clusters4=cutree(hierarchical_clustering_w_euclidean_ward,k=4)
+table(clusters4)
+data_w_clusters_assignment=cbind.data.frame(normalized_cereals_data,clusters4)
+```
+
+
+
+#### 3. Comment on the structure of the clusters and on their stability. Hint: To check stability, partition the data and see how well clusters formed based on one part apply to the other part. To do this:
+
+Cluster partition A
+```{r}
+# Clustering the data from 1 to 55 rows in A and remaining rows in B(74% and 26%)
+cereals_A <-normalized_cereals_data[1:55,]
+cereals_B <-normalized_cereals_data[56:74,]
+```
+
+Use the cluster centroids from A to assign each record in partition B (each record is assigned to the cluster with the closest centroid).
+```{r}
+dist_A=dist(cereals_A,method="euclidean")
+hierarchical_ward_A=hclust(dist_A,method="ward.D")
+plot(hierarchical_ward_A,cex=0.6,hang=-1)
+rect.hclust(hierarchical_ward_A,k=4,border=1:4)
+clusters4_A=cutree(hierarchical_ward_A,k=4)
+table(clusters4_A)
+data_w_clusters_assignment_A=cbind.data.frame(cereals_A,clusters4_A)
+
+```
+
+
+Get the means of all columns in all 4 clusters
+```{r}
+cluster1=colMeans(data_w_clusters_assignment_A[data_w_clusters_assignment_A$clusters4_A=="1",])
+cluster2=colMeans(data_w_clusters_assignment_A[data_w_clusters_assignment_A$clusters4_A=="2",])
+cluster3=colMeans(data_w_clusters_assignment_A[data_w_clusters_assignment_A$clusters4_A=="3",])
+cluster4=colMeans(data_w_clusters_assignment_A[data_w_clusters_assignment_A$clusters4_A=="4",])
+```
+
+
+Combining all the clusters into one dataframe
+```{r}
+centroid_A=rbind(cluster1, cluster2, cluster3, cluster4)
+```
+
+
+Calculate the closest cluster for every data point in Partition B
+```{r}
+B_data_distance_from_clustersA=rowMins(distance(cereals_B,centroid_A[,-13]))
+total_clusters_A_B=c(data_w_clusters_assignment_A$clusters4_A,B_data_distance_from_clustersA)
+data_w_clusters_assignment =cbind(data_w_clusters_assignment,total_clusters_A_B)
+```
+
+Assess how consistent the cluster assignments are compared to the assignments based on all the data.
+
+Solution:
+Cluster assignments based on B partition are 68.4% consistent, and the cluster assignments based on all data are 77.03% consistent.
+
+```{r}
+table(data_w_clusters_assignment$clusters4==data_w_clusters_assignment$total_clusters_A_B)
+table(data_w_clusters_assignment$clusters4[56:74]==data_w_clusters_assignment$total_clusters_A_B[56:74])
+```
+I also tried 6 as the number of clusters but the stability was really low as the partition data was not matching well compared to 4 clusters.
+
+#### 4. The elementary public schools would like to choose a set of cereals to include in their daily cafeterias. Every day a different cereal is offered, but all cereals should support a healthy diet. For this goal, you are requested to find a cluster of “healthy cereals.”
+
+Solution:
+The table below indicates that cluster 1 is the cluster of "Healthy Cereals". Compared to the other clusters, cluster 1 has the highest fiber contest and also has highest rating and also ranks second in protein and potassium levels and has the lowest calories, fat, sodium and sugar. So, this cluster 1 makes up the healthiest choice
+
+```{r}
+# Getting the centroids of all the 4 clusters and trying to identify which one is healthy
+cluster1_centroid=colMeans(data_w_clusters_assignment[data_w_clusters_assignment$clusters4 == "1",])
+cluster2_centroid=colMeans(data_w_clusters_assignment[data_w_clusters_assignment$clusters4 == "2",])
+cluster3_centroid=colMeans(data_w_clusters_assignment[data_w_clusters_assignment$clusters4 == "3",])
+cluster4_centroid=colMeans(data_w_clusters_assignment[data_w_clusters_assignment$clusters4 == "4",])
+
+# Combining all the cluster centroids
+all_cluster_centroids_of_all_columns=rbind(cluster1_centroid, cluster2_centroid, cluster3_centroid, cluster4_centroid)
+all_cluster_centroids_of_all_columns
+```
+
+
+Cluster 1 has 12 cereals shown below and can be used in the daily cafeterias
+```{r}
+data_w_clusters_assignment[data_w_clusters_assignment$clusters4 == '1',]
+```
+
+#### Should the data be normalized? If not, how should they be used in the cluster analysis?
+Before performing cluster analysis, it's generally a good idea to normalize the data to ensure that all variables are on a similar scale. This helps to avoid any variable dominating the analysis based solely on their scale rather than their true importance in the analysis. For example, in the case of cereals, if we're considering the grams of sugar, grams of fat, and grams of fiber, it's important to scale each variable appropriately to ensure that they have equal influence on the clustering.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
